@@ -13,9 +13,9 @@
 #	{key->(drug1, drug2): val: (patient, date))}
 
 
-import argparse
-import collections
+from collections import defaultdict
 import json
+import argparse
 
 
 
@@ -30,18 +30,31 @@ def save_JSON(data, filename = 'output.json'):
 
 def read_analyze(filename, Ncoadmin):
 
-	alldata = collections.defaultdict(lambda : collections.defaultdict(list))
+	# might not need both of these. At least alldata would be good for outputting (easy to read back in.)
+	alldata = defaultdict(lambda : defaultdict(list))
+	coadmin_data = defaultdict(lambda : defaultdict(list))
 
 	with open(filename) as f:
 		for l in f:
 			# check that only 3 fields were gotten, else exit.
 
-			patient, date, drug = l.split(',')
-			alldata[patient][date].append(drug.rstrip('\n'))
+			patient, date, drug1 = l.split(',')
+			drug1 = drug1.rstrip('\n')
 
+			# insert into the dict containing co-administration data:
+			for drug2 in alldata[patient][date]:
+				## check for redundant data
+				coadmin_data[drug1][drug2].append((date, patient))
+				coadmin_data[drug2][drug1].append((date, patient))
+
+			alldata[patient][date].append(drug1)
+
+
+	return coadmin_data
 
 	# DEBUG: show full JSON data:
-	print json.dumps(alldata, sort_keys=True, indent=4, separators=(',', ': '))
+	# print json.dumps(alldata, sort_keys=True, indent=4, separators=(',', ': '))
+	print json.dumps(drug_coadmin, sort_keys=True, indent=4, separators=(',', ': '))
 
 
 if __name__ == "__main__":
@@ -55,10 +68,18 @@ if __name__ == "__main__":
 	and there is only 1 valid name for each drug.""" % Ncoadmin_default
 	parser = argparse.ArgumentParser(description=desc, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 	parser.add_argument('filename', help='Raw CSV file containing comma separated 3-tuples (patient ID, date formated as YYYY-MM-DD, drug name)')
-	parser.add_argument('-Ncoadmin', help="The minimum number of co-administered times for each drug in the output file.", default=Ncoadmin_default)
+	parser.add_argument('-Ncoadmin', help="The minimum number of co-administered times for each drug in the output file.", type=int, default=Ncoadmin_default)
 	args = parser.parse_args()
 
 	# read the file & analyze for co-administration:
-	read_analyze(args.filename, args.Ncoadmin)
+	coadmin_data = read_analyze(args.filename, args.Ncoadmin)
+
+	# Build a list of drugs coadministered > N.coadmin times:
+	l = [(drug1, drug2, len(coadmins)) \
+	             for drug1, innerdict in coadmin_data.iteritems() \
+	             for drug2, coadmins in innerdict.iteritems() \
+	             if len(coadmins) >= args.Ncoadmin and drug1 < drug2]
+
+	print l
 
 	# save_JSON(alldata)
